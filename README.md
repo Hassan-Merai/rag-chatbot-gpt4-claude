@@ -90,8 +90,3 @@ ANTHROPIC_API_KEY=your-anthropic-key
 * FAISS vector store creation
 
 ---
-
-```
-
-Let me know when Day 2 ends and I’ll update this `README.md` file with the next completed section!
-```
