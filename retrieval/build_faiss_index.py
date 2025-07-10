@@ -1,9 +1,9 @@
-# build_faiss_index.py
-
 import logging
-import numpy as np
-import faiss
 from pathlib import Path
+import pickle
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.documents import Document
 from embed_utils import load_chunks
 
 def setup_logging():
@@ -17,31 +17,35 @@ def setup_logging():
 def main():
     logger = setup_logging()
 
-    # Load cached chunks and embeddings
     chunks_path = Path("retrieval/cache_data/chunks.pkl")
-    embeddings_path = Path("retrieval/cache_data/embeddings.npy")
-
-    if not chunks_path.exists() or not embeddings_path.exists():
-        logger.error("Missing precomputed chunks or embeddings. Run process_real_data.py first.")
+    if not chunks_path.exists():
+        logger.error(f"Chunks file not found at {chunks_path}")
         return
 
     chunks = load_chunks(chunks_path)
-    embeddings = np.load(embeddings_path)
+    logger.info(f"✅ Loaded {len(chunks)} chunks.")
 
-    if len(chunks) != len(embeddings):
-        logger.error("Mismatch between number of chunks and embeddings.")
-        return
+    # Convert chunks to LangChain Documents
+    documents = []
+    for chunk in chunks:
+        # Assuming chunk is dict with 'text' key; adjust if your chunks differ
+        if isinstance(chunk, dict) and "text" in chunk:
+            content = chunk["text"]
+        else:
+            content = str(chunk)  # fallback to string conversion
+        documents.append(Document(page_content=content))
 
-    d = embeddings.shape[1]  # dimension of embedding vectors
-    logger.info(f"Embedding dimension: {d}")
+    logger.info(f"Converted chunks to {len(documents)} LangChain Documents.")
 
-    # Step 1: Create FAISS index (Flat L2 for now)
-    index = faiss.IndexFlatL2(d)
-    index.add(embeddings)
+    # Initialize HuggingFace Embeddings (note the deprecation warning, consider updating package later)
+    embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-    # Step 2: Save index to disk
-    faiss.write_index(index, "retrieval/index/faiss_index.idx")
-    logger.info(f"✅ FAISS index built and saved with {index.ntotal} vectors.")
+    # Build FAISS index from documents
+    vectorstore = FAISS.from_documents(documents, embedding_model)
+    index_dir = Path("retrieval/index")
+    index_dir.mkdir(parents=True, exist_ok=True)
+    vectorstore.save_local(str(index_dir))
+    logger.info(f"✅ FAISS index built and saved to {index_dir}")
 
 if __name__ == "__main__":
     main()
